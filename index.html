@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de FCR (FCRnator)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+        }
+        .details-row { display: none; }
+        .details-row.open { display: table-row; }
+        .sub-details-row { display: none; }
+        .sub-details-row.open { display: table-row; }
+        
+        .details-cell {
+            padding: 0 !important;
+            border: 0;
+        }
+        .details-cell div {
+            padding: 1rem;
+            background-color: #1f2937; /* gray-800 */
+            overflow-x: auto;
+        }
+        
+        .table-fixed-layout {
+            table-layout: fixed;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        .btn-lift {
+            transition: all 0.2s ease-out;
+        }
+        .btn-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+
+<body class="antialiased text-gray-300">
+
+    <div class="container mx-auto max-w-7xl p-4 md:p-8">
+
+        <header class="mb-8 p-6 bg-gray-800 rounded-lg border border-gray-700 shadow-lg">
+            <h1 class="text-3xl font-bold text-gray-100">FCRnator - Analisador de FCR</h1>
+            <p class="text-lg text-gray-400">Carregue o relatório analítico para calcular o FCR.</p>
+        </header>
+
+        <div class="mb-6 bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">1. Carregar Relatório (.xlsx, .csv)</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="fileUploader1" class="block text-sm font-medium text-gray-300 mb-2">Ficheiro 1</label>
+                    <input type="file" id="fileUploader1" accept=".csv, .xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                           class="block w-full text-sm text-gray-400
+                                  file:mr-4 file:py-3 file:px-5 file:rounded-lg file:border-0
+                                  file:text-sm file:font-semibold
+                                  file:bg-blue-600 file:text-white
+                                  hover:file:bg-blue-500 cursor-pointer">
+                </div>
+                <div>
+                    <label for="fileUploader2" class="block text-sm font-medium text-gray-300 mb-2">Ficheiro 2 (Opcional)</label>
+                    <input type="file" id="fileUploader2" accept=".csv, .xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                           class="block w-full text-sm text-gray-400
+                                  file:mr-4 file:py-3 file:px-5 file:rounded-lg file:border-0
+                                  file:text-sm file:font-semibold
+                                  file:bg-gray-600 file:text-gray-100
+                                  hover:file:bg-gray-500 cursor-pointer">
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-section" class="hidden flex-col items-center justify-center my-10 p-6 bg-gray-800 rounded-lg border border-gray-700 shadow-lg">
+            <div class="spinner"></div>
+            <p id="loading-text" class="mt-4 text-lg font-medium text-gray-300">A processar o ficheiro...</p>
+        </div>
+
+        <div id="filter-section" class="hidden mb-6 bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
+            <h2 class="text-xl font-semibold text-gray-100 mb-6">2. Definir Regras do FCR</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="identifierSelect" class="block text-sm font-medium text-gray-300 mb-2">Identificar Cliente Por:</label>
+                    <select id="identifierSelect" class="block w-full p-3 border border-gray-600 rounded-lg bg-gray-900 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="CPF/CNPJ">CPF/CNPJ</option>
+                        <option value="Contato" selected>Nome do Contato (Recomendado)</option>
+                        <option value="Telefone">Telefone (Recomendado)</option>
+                    </select>
+                </div>
+                
+                <div class="hidden">
+                    <label for="fcrWindow" class="block text-sm font-medium text-gray-300 mb-2">Janela de FCR (em horas):</label>
+                    <input type="number" id="fcrWindow" value="24" class="w-full p-3 border border-gray-600 rounded-lg bg-gray-900 text-gray-300 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label for="viewSelect" class="block text-sm font-medium text-gray-300 mb-2">Modo de Visualização:</label>
+                    <select id="viewSelect" class="block w-full p-3 border border-gray-600 rounded-lg bg-gray-900 text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="view-clients">Ver por Clientes</option>
+                        <option value="view-agents">Ver por Agentes</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="dateStart" class="block text-sm font-medium text-gray-300 mb-2">Período da Análise: Data Início</label>
+                    <input type="date" id="dateStart" class="w-full p-2 border border-gray-600 rounded-lg bg-gray-900 text-gray-300 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="dateEnd" class="block text-sm font-medium text-gray-300 mb-2">Período da Análise: Data Fim</label>
+                    <input type="date" id="dateEnd" class="w-full p-2 border border-gray-600 rounded-lg bg-gray-900 text-gray-300 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+            
+            <button id="analyzeButton" class="mt-8 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 btn-lift">
+                Analisar FCR
+            </button>
+        </div>
+
+        <div id="results-section" class="hidden">
+            <div class="mb-8 bg-gray-800 p-6 rounded-lg border border-gray-700 shadow-lg">
+                <h2 class="text-2xl font-semibold text-gray-100 mb-4">
+                    Visão Geral do FCR
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-md">
+                        <h3 class="text-sm font-medium text-gray-400 truncate">Taxa de FCR (Clientes)</h3>
+                        <p id="kpi-fcr-rate" class="mt-1 text-4xl font-semibold text-blue-400">0%</p>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-md">
+                        <h3 class="text-sm font-medium text-gray-400 truncate">Clientes Únicos (no período)</h3>
+                        <p id="kpi-unique-clients" class="mt-1 text-4xl font-semibold text-gray-100">0</p>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-md">
+                        <h3 class="text-sm font-medium text-gray-400 truncate">Clientes c/ Rechamada</h3>
+                        <p id="kpi-fcr-fails" class="mt-1 text-4xl font-semibold text-red-400">0</p>
+                    </div>
+                    <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-md">
+                        <h3 class="text-sm font-medium text-gray-400 truncate">Agente Detrator (% Rechamada)</h3>
+                        <p id="kpi-worst-agent" class="mt-1 text-3xl font-semibold text-yellow-400">-</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="client-view" class="hidden">
+                <h2 class="text-2xl font-semibold text-gray-100 mb-4">Clientes com Rechamadas (no período)</h2>
+                <div class="bg-gray-800 rounded-lg shadow-md overflow-hidden border border-gray-700">
+                    <table class="min-w-full divide-y divide-gray-700 table-fixed-layout">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-10"></th>
+                                <th class="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Cliente (Contato)</th>
+                                <th class="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">CPF/CNPJ</th>
+                                <th class="pl-2 pr-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Total de Rechamadas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientListContainer" class="bg-gray-800 divide-y divide-gray-700">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="agent-view" class="hidden">
+                <h2 class="text-2xl font-semibold text-gray-100 mb-4">Análise de Rechamadas por Agente (no período)</h2>
+                <div class="bg-gray-800 rounded-lg shadow-md overflow-hidden border border-gray-700">
+                    <table class="min-w-full divide-y divide-gray-700 table-fixed-layout">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-10"></th>
+                                <th class="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Agente</th>
+                                <th class="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">% Rechamada</th>
+                                <th class="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Em Rechamadas</th>
+                                <th class="pl-2 pr-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Total Atendimentos</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agentListContainer" class="bg-gray-800 divide-y divide-gray-700">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    const fileUploader1 = document.getElementById('fileUploader1');
+    const fileUploader2 = document.getElementById('fileUploader2');
+    const loadingSection = document.getElementById('loading-section');
+    const loadingText = document.getElementById('loading-text');
+    const filterSection = document.getElementById('filter-section');
+    const identifierSelect = document.getElementById('identifierSelect');
+    const fcrWindowInput = document.getElementById('fcrWindow');
+    const viewSelect = document.getElementById('viewSelect');
+    const dateStartInput = document.getElementById('dateStart');
+    const dateEndInput = document.getElementById('dateEnd');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const resultsSection = document.getElementById('results-section');
+
+    const kpiFcrRate = document.getElementById('kpi-fcr-rate');
+    const kpiUniqueClients = document.getElementById('kpi-unique-clients');
+    const kpiFcrFails = document.getElementById('kpi-fcr-fails');
+    const kpiWorstAgent = document.getElementById('kpi-worst-agent');
+
+    const clientView = document.getElementById('client-view');
+    const clientListContainer = document.getElementById('clientListContainer');
+    const agentView = document.getElementById('agent-view');
+    const agentListContainer = document.getElementById('agentListContainer');
+
+    let combinedData = [];
+    const requiredHeaders = ['Data de Entrada', 'Contato', 'CPF/CNPJ', 'Agente', 'Protocolo', 'Classificação', 'Telefone', 'Serviço', 'Recorrência'];
+
+    let file1Data = [];
+    let file2Data = [];
+
+    function showView(view) {
+        clientView.classList.add('hidden');
+        agentView.classList.add('hidden');
+        if (view === 'view-clients') {
+            clientView.classList.remove('hidden');
+        } else if (view === 'view-agents') {
+            agentView.classList.remove('hidden');
+        }
+    }
+
+    viewSelect.addEventListener('change', () => showView(viewSelect.value));
+
+    [fileUploader1, fileUploader2].forEach(uploader => {
+        uploader.addEventListener('change', handleFileLoad);
+    });
+
+    analyzeButton.addEventListener('click', startAnalysis);
+
+    async function handleFileLoad(event) {
+        const file = event.target.files[0];
+        const uploaderId = event.target.id;
+        
+        if (!file) {
+            if (uploaderId === 'fileUploader1') file1Data = [];
+            if (uploaderId === 'fileUploader2') file2Data = [];
+            updateCombinedData();
+            return;
+        }
+
+        loadingSection.classList.remove('hidden');
+        loadingText.textContent = `A processar ${file.name}...`;
+
+        try {
+            let data;
+            if (file.name.endsWith('.xlsx')) {
+                data = await readXlsxAsJson(file);
+            } else if (file.name.endsWith('.csv')) {
+                data = await readCsvAsJson(file);
+            } else {
+                data = await readCsvAsJson(file);
+            }
+            
+            if (uploaderId === 'fileUploader1') file1Data = data;
+            if (uploaderId === 'fileUploader2') file2Data = data;
+            
+            updateCombinedData();
+            
+        } catch (err) {
+            showErrorModal(`Erro ao processar o ficheiro ${file.name}: ${err.message}`);
+            if (uploaderId === 'fileUploader1') fileUploader1.value = '';
+            if (uploaderId === 'fileUploader2') fileUploader2.value = '';
+        }
+        
+        if (fileUploader1.files.length === 0 && fileUploader2.files.length === 0) {
+             loadingSection.classList.add('hidden');
+        }
+    }
+
+    function updateCombinedData() {
+        // Combina dados do Ficheiro 1 e Ficheiro 2
+        combinedData = [...file1Data, ...file2Data];
+        
+        if (combinedData.length > 0) {
+            loadingText.textContent = `Total de ${combinedData.length} linhas carregadas.`;
+            filterSection.classList.remove('hidden');
+            setTimeout(() => loadingSection.classList.add('hidden'), 500);
+        } else {
+            filterSection.classList.add('hidden');
+        }
+        
+        resultsSection.classList.add('hidden');
+    }
+
+    /**
+     * Limpa os campos chave para que strings vazias sejam 'undefined'
+     */
+    function cleanRowField(row, colName) {
+        if (row[colName] === null || row[colName] === '') {
+            row[colName] = undefined;
+        }
+        if (typeof row[colName] === 'string' && row[colName].replace(/"/g, '').trim() === '') {
+            row[colName] = undefined;
+        }
+        if (typeof row[colName] === 'string') {
+            row[colName] = row[colName].replace(/"/g, '').trim();
+        }
+    }
+
+    function readCsvAsJson(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsText(file, 'ISO-8859-1'); 
+
+            reader.onload = (e) => {
+                try {
+                    const text = e.target.result;
+                    if (!text) return resolve([]);
+
+                    const lines = text.split('\n');
+                    if (lines.length <= 1) return resolve([]);
+                    
+                    let headerLine = lines[0].trim();
+                    if (headerLine.charCodeAt(0) === 0xFEFF) {
+                        headerLine = headerLine.substring(1);
+                    }
+                    
+                    const headers = headerLine.split(';').map(h => h.replace(/"/g, '').trim());
+                    
+                    const missingCols = requiredHeaders.filter(col => !headers.includes(col));
+                    if (missingCols.length > 0) {
+                        throw new Error(`O ficheiro CSV não contém as colunas obrigatórias: ${missingCols.join(', ')}`);
+                    }
+                    
+                    const colIndices = {};
+                    requiredHeaders.forEach(col => {
+                        colIndices[col] = headers.indexOf(col);
+                    });
+
+                    const jsonData = [];
+                    for (let i = 1; i < lines.length; i++) {
+                        if (!lines[i] || lines[i].trim() === '') continue;
+                        
+                        const values = lines[i].split(';'); 
+                        
+                        let row = {};
+                        requiredHeaders.forEach(col => {
+                            const index = colIndices[col];
+                            row[col] = values[index]; // Ler como string
+                        });
+
+                        // Limpar campos chave
+                        ['Agente', 'Protocolo', 'CPF/CNPJ', 'Telefone', 'Contato'].forEach(col => {
+                            cleanRowField(row, col);
+                        });
+                        
+                        row.parsedDate = parseFCRDate(row['Data de Entrada']);
+                        if (row.parsedDate) {
+                            if(row.Agente) {
+                                row.Agente = row.Agente.toString().trim().toUpperCase();
+                            }
+                            jsonData.push(row);
+                        }
+                    }
+                    resolve(jsonData);
+                    
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = (err) => reject(new Error('Erro ao ler o ficheiro CSV: ' + file.name));
+        });
+    }
+
+    function readXlsxAsJson(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsArrayBuffer(file); 
+
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    
+                    let jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (jsonData.length === 0) {
+                        return resolve([]);
+                    }
+
+                    const headers = Object.keys(jsonData[0]);
+                    const missingCols = requiredHeaders.filter(col => !headers.includes(col));
+
+                    if (missingCols.length > 0) {
+                        throw new Error(`O ficheiro Excel não contém as colunas obrigatórias: ${missingCols.join(', ')}`);
+                    }
+                    
+                    const cleanedData = jsonData.map(row => {
+                        // Limpar campos chave
+                        ['Agente', 'Protocolo', 'CPF/CNPJ', 'Telefone', 'Contato'].forEach(col => {
+                            cleanRowField(row, col);
+                        });
+                        
+                        row.parsedDate = parseFCRDate(row['Data de Entrada']);
+                        if(row.Agente) {
+                            row.Agente = row.Agente.toString().trim().toUpperCase();
+                        }
+                        return row;
+                    }).filter(row => row.parsedDate !== null); 
+
+                    resolve(cleanedData);
+
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = (err) => reject(new Error('Erro ao ler o ficheiro Excel: ' + file.name));
+        });
+    }
+
+    function parseFCRDate(dateString) {
+        if (!dateString) return null;
+        const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4})\s(\d{2}):(\d{2}):(\d{2})/);
+        if (parts) {
+            const [, day, month, year, hour, min, sec] = parts;
+            const isoDate = `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+            const date = new Date(isoDate);
+            if (!isNaN(date)) {
+                return date;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * ! LÓGICA V3 REVERTIDA !
+     * Filtra os dados pelo período de datas PRIMEIRO.
+     */
+    function startAnalysis() {
+        const identifierKey = identifierSelect.value; 
+        const dateStart = dateStartInput.value ? new Date(dateStartInput.value + 'T00:00:00') : null;
+        const dateEnd = dateEndInput.value ? new Date(dateEndInput.value + 'T23:59:59') : null;
+
+        if (combinedData.length === 0) {
+            showErrorModal('Nenhum dado carregado para analisar.');
+            return;
+        }
+        
+        if (!dateStart || !dateEnd) {
+            showErrorModal('Por favor, defina um Período de Análise (Data Início e Data Fim).');
+            return;
+        }
+
+        loadingSection.classList.remove('hidden');
+        loadingText.textContent = 'A analisar FCR... Isto pode demorar.';
+        resultsSection.classList.add('hidden');
+        
+        setTimeout(() => {
+            try {
+                // Filtra os dados ANTES de enviar para a função de cálculo.
+                const filteredData = combinedData.filter(row => {
+                    return row.parsedDate >= dateStart && row.parsedDate <= dateEnd;
+                });
+                
+                if(filteredData.length === 0) {
+                    throw new Error('Nenhum dado encontrado para o período selecionado.');
+                }
+                
+                // Envia apenas os dados filtrados para a análise
+                const { clientFails, agentMetrics } = calculateFCR(filteredData, identifierKey);
+                
+                // Envia os dados filtrados para calcular os KPIs
+                displayResults(filteredData, clientFails, agentMetrics);
+                
+                showView(viewSelect.value);
+                
+                resultsSection.classList.remove('hidden');
+                loadingSection.classList.add('hidden');
+
+            } catch (err) {
+                loadingSection.classList.add('hidden');
+                showErrorModal(`Erro na análise: ${err.message}`);
+                console.error(err);
+            }
+        }, 50); 
+    }
+
+    /**
+     * ! LÓGICA V3 REVERTIDA !
+     * Recebe APENAS 'data' (dados já filtrados) e procura por originais
+     * somente dentro desse conjunto de dados.
+     */
+    function calculateFCR(data, identifierKey) {
+        const agentStats = new Map();
+        const clientInteractions = new Map();
+
+        // 1. Primeira Passagem: Agrupar todos os atendimentos (já filtrados)
+        data.forEach(row => {
+            const id = row[identifierKey];
+            const agent = row.Agente; // Pode ser undefined
+            const isRechamada = row['Recorrência'] === 'Rechamada';
+
+            if (agent) {
+                if (!agentStats.has(agent)) {
+                    agentStats.set(agent, { total: 0, rechamadas: 0 });
+                }
+                agentStats.get(agent).total++;
+                if (isRechamada) {
+                    agentStats.get(agent).rechamadas++;
+                }
+            }
+            
+            if (id) {
+                if (!clientInteractions.has(id)) {
+                    clientInteractions.set(id, []);
+                }
+                clientInteractions.get(id).push(row);
+            }
+        });
+
+        // 2. Segunda Passagem: Processar interações do cliente
+        const clientFails = new Map(); // Para a "Visão por Cliente"
+        const agentRechamadasMap = new Map(); // Para a "Visão por Agente"
+
+        clientInteractions.forEach((attendances, id) => {
+            attendances.sort((a, b) => a.parsedDate - b.parsedDate);
+
+            for (let i = 0; i < attendances.length; i++) {
+                const currentCall = attendances[i];
+                
+                if (currentCall['Recorrência'] === 'Rechamada') {
+                    
+                    let originalCall = null;
+                    for (let j = i - 1; j >= 0; j--) {
+                        const originalCandidate = attendances[j];
+                        
+                        // LÓGICA DE TRANSFERÊNCIA (V3)
+                        const isTransfer = (originalCandidate.Protocolo && 
+                                            currentCall.Protocolo && 
+                                            originalCandidate.Protocolo === currentCall.Protocolo);
+                        
+                        if (!isTransfer) {
+                            originalCall = originalCandidate; 
+                            break; 
+                        }
+                    }
+                    
+                    const pair = { rechamada: currentCall, original: originalCall };
+
+                    if (!clientFails.has(id)) {
+                        clientFails.set(id, {
+                            contato: currentCall.Contato,
+                            cpf: currentCall['CPF/CNPJ'],
+                            atendimentos: [] 
+                        });
+                    }
+                    clientFails.get(id).atendimentos.push(pair);
+
+                    const agentOfRechamada = currentCall.Agente;
+                    if (agentOfRechamada) { 
+                        if (!agentRechamadasMap.has(agentOfRechamada)) {
+                            agentRechamadasMap.set(agentOfRechamada, []);
+                        }
+                        agentRechamadasMap.get(agentOfRechamada).push(pair);
+                    }
+                }
+            }
+        });
+
+        // 3. Montar Métricas Finais do Agente
+        const agentMetrics = Array.from(agentStats.entries())
+            .map(([nome, stats]) => {
+                const rechamadasComOriginais = agentRechamadasMap.get(nome) || [];
+                return {
+                    nome,
+                    total: stats.total, 
+                    rechamadas: stats.rechamadas,
+                    percent: stats.total > 0 ? (stats.rechamadas / stats.total) * 100 : 0,
+                    atendimentos: rechamadasComOriginais 
+                };
+            })
+            .sort((a, b) => b.percent - a.percent); 
+
+        return { clientFails, agentMetrics };
+    }
+
+
+    /**
+     * ! LÓGICA V3 REVERTIDA !
+     * Calcula clientes únicos a partir dos 'filteredData'.
+     */
+    function displayResults(filteredData, clientFails, agentMetrics) {
+        const uniqueClients = new Set(filteredData.map(row => row[identifierSelect.value]).filter(Boolean));
+        const totalUniqueClients = uniqueClients.size;
+        
+        const totalFails = clientFails.size;
+        const fcrRate = totalUniqueClients > 0 ? (1 - (totalFails / totalUniqueClients)) * 100 : 0;
+        
+        kpiFcrRate.textContent = `${fcrRate.toFixed(2)}%`;
+        kpiUniqueClients.textContent = totalUniqueClients.toLocaleString('pt-BR');
+        kpiFcrFails.textContent = totalFails.toLocaleString('pt-BR');
+        
+        if(agentMetrics.length > 0) {
+            const worstAgent = agentMetrics.find(a => a.percent > 0) || agentMetrics[0];
+            kpiWorstAgent.textContent = `${worstAgent.nome} (${worstAgent.percent.toFixed(1)}%)`;
+            
+            kpiWorstAgent.classList.remove('text-red-400', 'text-yellow-400', 'text-green-400');
+            if (worstAgent.percent > 20) {
+                kpiWorstAgent.classList.add('text-red-400');
+            } else if (worstAgent.percent > 10) {
+                kpiWorstAgent.classList.add('text-yellow-400');
+            } else {
+                kpiWorstAgent.classList.add('text-green-400');
+            }
+        } else {
+            kpiWorstAgent.textContent = '-';
+            kpiWorstAgent.classList.remove('text-red-400', 'text-yellow-400');
+            kpiWorstAgent.classList.add('text-green-400');
+        }
+
+        displayClientList(clientFails);
+        displayAgentList(agentMetrics);
+    }
+
+    function displayClientList(clientFails) {
+        clientListContainer.innerHTML = '';
+        
+        const sortedFails = Array.from(clientFails.values()).sort((a, b) => b.atendimentos.length - a.atendimentos.length);
+        
+        if (sortedFails.length === 0) {
+            clientListContainer.innerHTML = `<tr><td colspan="4" class="text-center text-gray-400 py-6">Nenhum cliente com rechamada encontrado.</td></tr>`;
+            return;
+        }
+
+        sortedFails.forEach((fail, index) => {
+            const clientId = `client-row-${index}`;
+            
+            const headerRow = document.createElement('tr');
+            headerRow.className = 'client-header cursor-pointer hover:bg-gray-700';
+            headerRow.dataset.target = clientId;
+            headerRow.innerHTML = `
+                <td class="pl-4 pr-2 py-4 whitespace-nowrap">
+                    <svg class="w-5 h-5 text-gray-500 expand-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </td>
+                <td class="px-2 py-4 whitespace-nowrap text-sm font-medium text-gray-100">${fail.contato || 'N/A'}</td>
+                <td class="px-2 py-4 whitespace-nowrap text-sm text-gray-400">${fail.cpf || 'N/A'}</td>
+                <td class="pl-2 pr-4 py-4 whitespace-nowrap text-sm font-semibold text-red-400">${fail.atendimentos.length} rechamadas</td>
+            `;
+            
+            const detailsRow = document.createElement('tr');
+            detailsRow.className = 'details-row';
+            detailsRow.id = clientId;
+            
+            const detailsCell = document.createElement('td');
+            detailsCell.colSpan = 4;
+            detailsCell.className = 'details-cell';
+            
+            const dayGroups = groupAttendancesByDay(fail.atendimentos);
+            const sortedDays = Object.keys(dayGroups).sort((a, b) => new Date(a) - new Date(b));
+
+            let detailsHtml = '<div class="space-y-4 w-full">';
+            
+            sortedDays.forEach((day, dayIndex) => {
+                const dayKey = `${clientId}-day-${dayIndex}`;
+                const dayAttendances = dayGroups[day]; 
+                const formattedDay = day.split('-').reverse().join('/');
+                
+                detailsHtml += `
+                    <div class="bg-gray-900 rounded-lg border border-gray-700">
+                        <div class="day-header cursor-pointer p-3 flex justify-between items-center hover:bg-gray-700" data-target="${dayKey}">
+                            <span class="font-semibold text-blue-400">Dia: ${formattedDay}</span>
+                            <span class="text-sm text-gray-400">${dayAttendances.length} rechamadas</span>
+                            <svg class="w-5 h-5 text-gray-500 expand-icon-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                        <div id="${dayKey}" class="sub-details-row p-4 border-t border-gray-700">
+                            ${generateAttendanceTable(dayAttendances, false)}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            detailsCell.innerHTML = detailsHtml + '</div>';
+            detailsRow.appendChild(detailsCell);
+            
+            clientListContainer.appendChild(headerRow);
+            clientListContainer.appendChild(detailsRow);
+        });
+    }
+
+    function displayAgentList(agentMetrics) {
+        agentListContainer.innerHTML = '';
+        
+        if (agentMetrics.length === 0) {
+            agentListContainer.innerHTML = `<tr><td colspan="5" class="text-center text-gray-400 py-6">Nenhum agente encontrado.</td></tr>`;
+            return;
+        }
+
+        agentMetrics.forEach((agent, index) => {
+            const agentId = `agent-row-${index}`;
+            const percent = agent.percent;
+            let scoreColor = 'text-gray-300';
+            if (percent === 0) scoreColor = 'text-green-400';
+            else if (percent > 20) scoreColor = 'text-red-400';
+            else if (percent > 10) scoreColor = 'text-yellow-400';
+
+            const headerRow = document.createElement('tr');
+            headerRow.className = 'client-header cursor-pointer hover:bg-gray-700';
+            headerRow.dataset.target = agentId;
+            headerRow.innerHTML = `
+                <td class="pl-4 pr-2 py-4 whitespace-nowrap">
+                    <svg class="w-5 h-5 text-gray-500 expand-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </td>
+                <td class="px-2 py-4 whitespace-nowrap text-sm font-medium text-gray-100">${agent.nome}</td>
+                <td class="px-2 py-4 whitespace-nowrap text-sm font-semibold ${scoreColor}">${percent.toFixed(2)}%</td>
+                <td class="px-2 py-4 whitespace-nowrap text-sm text-gray-400">${agent.rechamadas}</td>
+                <td class="pl-2 pr-4 py-4 whitespace-nowrap text-sm text-gray-400">${agent.total}</td>
+            `;
+            
+            const detailsRow = document.createElement('tr');
+            detailsRow.className = 'details-row';
+            detailsRow.id = agentId;
+            
+            const detailsCell = document.createElement('td');
+            detailsCell.colSpan = 5; 
+            detailsCell.className = 'details-cell';
+            
+            let detailsHtml = '<div class="space-y-4 w-full">';
+            if (agent.atendimentos.length > 0) {
+                 const dayGroups = groupAttendancesByDay(agent.atendimentos);
+                 const sortedDays = Object.keys(dayGroups).sort((a, b) => new Date(a) - new Date(b));
+
+                 sortedDays.forEach((day, dayIndex) => {
+                     const dayKey = `${agentId}-day-${dayIndex}`;
+                     const dayAttendances = dayGroups[day];
+                     const formattedDay = day.split('-').reverse().join('/');
+                     
+                     detailsHtml += `
+                         <div class="bg-gray-900 rounded-lg border border-gray-700">
+                             <div class="day-header cursor-pointer p-3 flex justify-between items-center hover:bg-gray-700" data-target="${dayKey}">
+                                 <span class="font-semibold text-blue-400">Dia: ${formattedDay}</span>
+                                 <span class="text-sm text-gray-400">${dayAttendances.length} rechamadas</span>
+                                 <svg class="w-5 h-5 text-gray-500 expand-icon-sub" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                             </div>
+                             <div id="${dayKey}" class="sub-details-row p-4 border-t border-gray-700">
+                                 ${generateAttendanceTable(dayAttendances, true)}
+                             </div>
+                         </div>
+                     `;
+                 });
+            } else {
+                detailsHtml += '<p class="text-gray-400 p-4">Este agente não teve atendimentos classificados como rechamada.</p>';
+            }
+            
+            detailsCell.innerHTML = detailsHtml + '</div>';
+            detailsRow.appendChild(detailsCell);
+            
+            agentListContainer.appendChild(headerRow);
+            agentListContainer.appendChild(detailsRow);
+        });
+    }
+
+    /**
+     * Agrupa pares de atendimento {rechamada, original} pela data da rechamada.
+     */
+    function groupAttendancesByDay(attendancePairs) {
+        const groups = {};
+        attendancePairs.forEach(pair => {
+            const att = pair.rechamada; // Agrupar pela data da rechamada
+            const day = att.parsedDate.toISOString().split('T')[0];
+            if (!groups[day]) {
+                groups[day] = [];
+            }
+            groups[day].push(pair); // Adiciona o par completo ao grupo
+        });
+        return groups;
+    }
+
+    /**
+     * Gera a tabela de detalhes, mostrando "Automático" e a mensagem de "não encontrado no período".
+     */
+    function generateAttendanceTable(attendancePairs, showClientName) {
+        let tableHtml = `
+            <table class="min-w-full divide-y divide-gray-700">
+                <thead class="bg-gray-800">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Tipo</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Protocolo</th>
+                        ${showClientName ? '<th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Cliente</th>' : ''}
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Agente</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Data/Hora</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Serviço</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">Classificação</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+        `;
+        
+        // Ordena os pares pela data da rechamada
+        attendancePairs.sort((a, b) => a.rechamada.parsedDate - b.rechamada.parsedDate);
+        
+        attendancePairs.forEach(pair => {
+            const rechamada = pair.rechamada;
+            const original = pair.original;
+
+            // --- Linha 1: A Rechamada (Destacada) ---
+            const proto_r = rechamada.Protocolo || 'N/A';
+            const link_r = (proto_r !== 'N/A') ? `https://ateltelecom.matrixdobrasil.ai/atendimento/view/cod_atendimento/${proto_r.slice(-7)}/readonly/true#atendimento-div` : '#';
+            const agente_r = rechamada.Agente || '<span class="text-gray-500 italic">Automático</span>';
+            const linkHtml_r = (proto_r !== 'N/A') ? `<a href="${link_r}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">${proto_r}</a>` : 'N/A';
+            
+            tableHtml += `
+                <tr class="text-sm text-gray-100 bg-red-900 bg-opacity-30 hover:bg-red-800 hover:bg-opacity-30">
+                    <td class="px-3 py-2 whitespace-nowrap font-semibold text-red-400">Rechamada</td>
+                    <td class="px-3 py-2 whitespace-nowrap">
+                        ${linkHtml_r}
+                    </td>
+                    ${showClientName ? `<td class="px-3 py-2 whitespace-nowrap">${rechamada.Contato || 'N/A'}</td>` : ''}
+                    <td class="px-3 py-2 whitespace-nowrap">${agente_r}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">${rechamada['Data de Entrada'] || 'N/A'}</td>
+                    <td class="px-3 py-2 whitespace-nowrap">${rechamada.Serviço || 'N/A'}</td>
+                    <td class="px-3 py-2">${rechamada.Classificação || 'N/A'}</td>
+                </tr>
+            `;
+
+            // --- Linha 2: O Atendimento Anterior ---
+            if (original) {
+                const proto_o = original.Protocolo || 'N/A';
+                const link_o = (proto_o !== 'N/A') ? `https://ateltelecom.matrixdobrasil.ai/atendimento/view/cod_atendimento/${proto_o.slice(-7)}/readonly/true#atendimento-div` : '#';
+                const agente_o = original.Agente || '<span class="text-gray-500 italic">Automático</span>';
+                const linkHtml_o = (proto_o !== 'N/A') ? `<a href="${link_o}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">${proto_o}</a>` : 'N/A';
+
+                
+                tableHtml += `
+                    <tr class="text-sm text-gray-300 bg-gray-800 hover:bg-gray-700">
+                        <td class="px-3 py-2 whitespace-nowrap pl-6 text-gray-400">↳ Anterior</td>
+                        <td class="px-3 py-2 whitespace-nowrap">
+                           ${linkHtml_o}
+                        </td>
+                        ${showClientName ? `<td class="px-3 py-2 whitespace-nowrap">${original.Contato || 'N/A'}</td>` : ''}
+                        <td class="px-3 py-2 whitespace-nowrap">${agente_o}</td>
+                        <td class="px-3 py-2 whitespace-nowrap">${original['Data de Entrada'] || 'N/A'}</td>
+                        <td class="px-3 py-2 whitespace-nowrap">${original.Serviço || 'N/A'}</td>
+                        <td class="px-3 py-2">${original.Classificação || 'N/A'}</td>
+                    </tr>
+                `;
+            } else {
+                // Mensagem da V3: O original não foi encontrado dentro dos dados filtrados.
+                tableHtml += `
+                    <tr class="text-sm text-gray-400 bg-gray-800">
+                        <td class="px-3 py-2 whitespace-nowrap pl-6 text-gray-400">↳ Anterior</td>
+                        <td class="px-3 py-2" colspan="${showClientName ? 6 : 5}">Atendimento anterior não encontrado no período filtrado.</td>
+                    </tr>
+                `;
+            }
+        });
+
+        return tableHtml + '</tbody></table>';
+    }
+
+    function setupAccordion(containerSelector) {
+        document.querySelector(containerSelector).addEventListener('click', (event) => {
+            const header = event.target.closest('.client-header, .day-header');
+            if (!header) return;
+
+            const targetId = header.dataset.target;
+            const targetRow = document.getElementById(targetId);
+            const icon = header.querySelector('.expand-icon, .expand-icon-sub');
+            
+            if (!targetRow || !icon) return;
+
+            if (targetRow.classList.contains('open')) {
+                targetRow.classList.remove('open');
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                targetRow.classList.add('open');
+                icon.style.transform = 'rotate(90deg)';
+            }
+        });
+    }
+
+    setupAccordion('#clientListContainer');
+    setupAccordion('#agentListContainer');
+
+    function showErrorModal(message) {
+        const oldModal = document.getElementById('error-modal');
+        if (oldModal) oldModal.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'error-modal';
+        modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="relative p-8 bg-gray-800 w-full max-w-md m-auto flex-col flex rounded-lg shadow-lg border border-gray-700">
+                <h3 class="text-xl font-semibold text-red-400 mb-4">Erro na Aplicação</h3>
+                <p class="text-gray-300 mb-6">${message}</p>
+                <button id="close-modal-btn" class="ml-auto px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">
+                    Fechar
+                </button>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        document.getElementById('close-modal-btn').onclick = () => modal.remove();
+    }
+    </script>
+</body>
+</html>
